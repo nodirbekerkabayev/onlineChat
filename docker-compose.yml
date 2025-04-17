@@ -1,0 +1,91 @@
+services:
+    chat_app:
+        build:
+            context: .
+            dockerfile: ./docker/php.dockerfile
+        container_name: chat_app
+        restart: unless-stopped
+        volumes:
+            - .:/var/www
+        networks:
+            - chat_app_network
+        depends_on:
+            - postgres
+        ports:
+            - "8083:8080"
+    #        command: >
+    #            sh -c "php artisan reverb:start && php artisan queue:listen"
+
+    postgres:
+        image: postgres
+        container_name: chat_postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${DB_DATABASE}
+            POSTGRES_USER: ${DB_USERNAME}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - chat_app_network
+        ports:
+            -   "5432:5432"  # Expose PostgreSQL on port 5432
+
+    pgadmin:
+        image: dpage/pgadmin4
+        container_name: chat_pgadmin
+        restart: unless-stopped
+        environment:
+            PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+            PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+        ports:
+            - "8081:80"
+        networks:
+            - chat_app_network
+
+    nginx:
+        container_name: chat_nginx
+        image: nginx:alpine  # Use the Nginx image
+        ports:
+            - "9001:80"  # Map port 8080 on the host to port 80 inside the container
+        volumes:
+            - ./:/var/www  # Mount the Laravel chat_application directory-
+            - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf  # Use our Nginx config
+        depends_on:
+            - chat_app  # Ensure PHP-FPM is started before Nginx
+        networks:
+            - chat_app_network  # Connect to the custom network
+
+    node:
+        image: node:22
+        container_name: chat_node
+        working_dir: /var/www
+        volumes:
+            - ./:/var/www
+        tty: true
+        ports:
+            - "5173:5173"  # For Vite development server
+        environment:
+            - NODE_ENV=development
+        command: >
+            sh -c "npm install && npm run build"
+        networks:
+            - chat_app_network
+
+    redis:
+        image: redis:latest
+        container_name: websocket_redis
+        ports:
+            - "1234:4321"
+        volumes:
+            - redis-data:/data
+        networks:
+            - chat_app_network
+
+volumes:
+    postgres_data:
+    redis-data:
+
+networks:
+    chat_app_network:
+        driver: bridge

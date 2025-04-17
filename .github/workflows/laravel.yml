@@ -1,29 +1,30 @@
-#name: Laravel
-#
-#on:
-#  push:
-#    branches: [ "main" ]
-#  pull_request:
-#    branches: [ "main" ]
-#
-#jobs:
-#  deploy:
-#    name: Deploy to AWS (EC2)
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: executing remote ssh commands using private key
-#        uses: appleboy/ssh-action@v1.1.0
-#        with:
-#          host: ${{ secrets.HOST }}
-#          username: ${{ secrets.USERNAME }}
-#          key: ${{ secrets.KEY }}
-#          script: |
-#            cd /var/www/JapanDigitalUniversitySchedule
-#            sudo docker compose down
-#            sudo git reset --hard
-#            sudo git pull
-#            sudo docker compose up -d --build
-#            sleep 2
-#            sudo docker exec jdu_app php artisan migrate
-#            sudo docker exec jdu_app php artisan optimize
-#            echo "Deploy Completed!"
+name: Laravel
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  deploy:
+
+    name: Deploy to AWS (EC2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: executing remote ssh commands using private key
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.KEY }}
+          script: |
+            cd /var/www/chat_app
+            sudo docker compose down
+            sudo git reset --hard
+            sudo git pull
+            sudo docker compose up -d --build
+            sleep 2
+            sudo docker exec chat_app php artisan migrate
+            sudo docker exec chat_app php artisan optimize
+            echo "Deploy Completed!"

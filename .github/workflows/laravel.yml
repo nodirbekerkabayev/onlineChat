@@ -52,25 +52,24 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
+          script_stop: true
           script: |
               cd /var/www/online_chat_app
               
-              # Ensure .env file exists (create from example if it doesn't)
+              # Ensure .env file exists and has correct values for containerized environment
               if [ ! -f .env ]; then
                 echo "Creating .env file from .env.example"
                 sudo cp .env.example .env
-                # You might need to set specific values in the .env file
-                # sudo sed -i 's/DB_DATABASE=laravel/DB_DATABASE=chat_app_db/g' .env
-              fi
-              
-              # Check for port conflicts before stopping containers
-              echo "Checking for port conflicts..."
-              PORTS_TO_CHECK="8083 5432 8081 9001 5173 1234"
-              for PORT in $PORTS_TO_CHECK; do
-                if sudo lsof -i :$PORT | grep LISTEN; then
-                  echo "WARNING: Port $PORT is already in use. This might cause issues when starting containers."
+                # Set correct values for containerized environment
+                sudo sed -i 's/REDIS_HOST=127.0.0.1/REDIS_HOST=websocket_redis/g' .env
+                sudo sed -i 's/REDIS_PORT=6379/REDIS_PORT=4321/g' .env
+                
+                # Generate application key if needed
+                if ! grep -q "^APP_KEY=" .env || grep -q "^APP_KEY=$" .env; then
+                  echo "Generating application key"
+                  sudo docker-compose exec -T chat_app php artisan key:generate --force || echo "Will generate key after containers are up"
                 fi
-              done
+              fi
               
               # Check which Docker Compose command to use
               echo "Determining Docker Compose command..."
@@ -81,6 +80,18 @@ jobs:
                 DOCKER_COMPOSE="docker compose"
                 echo "Using Docker Compose v2 (docker compose command)"
               fi
+              
+              # Check for port conflicts before stopping containers
+              echo "Checking for port conflicts..."
+              PORTS_TO_CHECK="8083 5432 8081 9001 5173 1234"
+              for PORT in $PORTS_TO_CHECK; do
+                if sudo lsof -i :$PORT | grep LISTEN; then
+                  echo "WARNING: Port $PORT is already in use. This might cause issues when starting containers."
+                  # Try to kill the process using the port
+                  echo "Attempting to free up port $PORT..."
+                  sudo fuser -k $PORT/tcp || echo "Could not free port $PORT"
+                fi
+              done
               
               # Stop running containers
               echo "Stopping existing containers..."
@@ -101,7 +112,7 @@ jobs:
               
               # Wait for containers to be ready
               echo "Waiting for containers to initialize..."
-              sleep 5
+              sleep 10
               
               # Get container name and run commands
               echo "Running database migrations and optimizations..."
@@ -114,7 +125,19 @@ jobs:
                 exit 1
               fi
               
+              # Generate key if we couldn't do it earlier
+              if ! grep -q "^APP_KEY=" .env || grep -q "^APP_KEY=$" .env; then
+                echo "Generating application key inside container"
+                sudo docker exec $CONTAINER_NAME php artisan key:generate --force
+              fi
+              
               echo "Using container: $CONTAINER_NAME"
+              # Run composer install inside the container to ensure all dependencies are installed
+              echo "Installing dependencies..."
+              sudo docker exec $CONTAINER_NAME composer install --no-interaction --optimize-autoloader || echo "Warning: Composer install failed"
+              
+              # Run database migrations and optimization commands
+              echo "Running migrations and optimizations..."
               sudo docker exec $CONTAINER_NAME php artisan migrate --force || echo "Warning: Migration failed"
               sudo docker exec $CONTAINER_NAME php artisan optimize || echo "Warning: Optimization failed"
               sudo docker exec $CONTAINER_NAME php artisan config:cache || echo "Warning: Config cache failed"

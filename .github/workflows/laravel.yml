@@ -54,24 +54,70 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
               cd /var/www/online_chat_app
-              # Check if docker-compose (v1) or docker compose (v2) is available
-              if command -v docker-compose &> /dev/null; then
-                # Docker Compose v1
-                sudo docker-compose down
-                sudo git reset --hard
-                sudo git pull
-                sudo docker-compose up -d --build
-              else
-                # Docker Compose v2
-                sudo docker compose down
-                sudo git reset --hard
-                sudo git pull
-                sudo docker compose up -d --build
+              
+              # Ensure .env file exists (create from example if it doesn't)
+              if [ ! -f .env ]; then
+                echo "Creating .env file from .env.example"
+                sudo cp .env.example .env
+                # You might need to set specific values in the .env file
+                # sudo sed -i 's/DB_DATABASE=laravel/DB_DATABASE=chat_app_db/g' .env
               fi
-              sleep 2
+              
+              # Check for port conflicts before stopping containers
+              echo "Checking for port conflicts..."
+              PORTS_TO_CHECK="8083 5432 8081 9001 5173 1234"
+              for PORT in $PORTS_TO_CHECK; do
+                if sudo lsof -i :$PORT | grep LISTEN; then
+                  echo "WARNING: Port $PORT is already in use. This might cause issues when starting containers."
+                fi
+              done
+              
+              # Check which Docker Compose command to use
+              echo "Determining Docker Compose command..."
+              if command -v docker-compose &> /dev/null; then
+                DOCKER_COMPOSE="docker-compose"
+                echo "Using Docker Compose v1 (docker-compose command)"
+              else
+                DOCKER_COMPOSE="docker compose"
+                echo "Using Docker Compose v2 (docker compose command)"
+              fi
+              
+              # Stop running containers
+              echo "Stopping existing containers..."
+              sudo $DOCKER_COMPOSE down || echo "Warning: Failed to stop containers, continuing anyway"
+              
+              # Pull latest code
+              echo "Updating code from repository..."
+              sudo git reset --hard
+              sudo git pull
+              
+              # Start containers with build
+              echo "Starting containers..."
+              sudo $DOCKER_COMPOSE up -d --build
+              
+              # Check if containers started successfully
+              echo "Checking container status..."
+              sudo docker ps
+              
+              # Wait for containers to be ready
+              echo "Waiting for containers to initialize..."
+              sleep 5
+              
+              # Get container name and run commands
+              echo "Running database migrations and optimizations..."
               CONTAINER_NAME=$(sudo docker ps --filter "name=chat_app" --format '{{.Names}}')
-              sudo docker exec $CONTAINER_NAME php artisan migrate
-              sudo docker exec $CONTAINER_NAME php artisan optimize
-              sudo docker exec $CONTAINER_NAME php artisan config:cache
-              sudo docker exec $CONTAINER_NAME php artisan route:cache
+              
+              if [ -z "$CONTAINER_NAME" ]; then
+                echo "ERROR: Container with name 'chat_app' not found!"
+                echo "Available containers:"
+                sudo docker ps
+                exit 1
+              fi
+              
+              echo "Using container: $CONTAINER_NAME"
+              sudo docker exec $CONTAINER_NAME php artisan migrate --force || echo "Warning: Migration failed"
+              sudo docker exec $CONTAINER_NAME php artisan optimize || echo "Warning: Optimization failed"
+              sudo docker exec $CONTAINER_NAME php artisan config:cache || echo "Warning: Config cache failed"
+              sudo docker exec $CONTAINER_NAME php artisan route:cache || echo "Warning: Route cache failed"
+              
               echo "Deploy Completed!"

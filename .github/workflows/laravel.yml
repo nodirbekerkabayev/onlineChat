@@ -1,31 +1,28 @@
-name: Laravel
+name: Laravel Deploy
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-
   deploy:
-
-    name: Deploy to AWS (EC2)
+    name: Deploy to DigitalOcean
     runs-on: ubuntu-latest
+
     steps:
-      - name: executing remote ssh commands using private key
-        uses: appleboy/ssh-action@v1.1.0
+      - name: SSH orqali ulanib Laravel loyihasini deploy qilish
+        uses: 'appleboy/ssh-action@v1.1.0'
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
           script: |
-            cd /var/www/online-chat-app
+            cd /var/www/onlineChat
             sudo docker compose down
             sudo git reset --hard
-            sudo git pull
+            sudo git pull origin main
             sudo docker compose up -d --build
-            sleep 2
-            sudo docker exec chat_app php artisan migrate
+            sleep 5
+            sudo docker exec chat_app php artisan migrate --force
             sudo docker exec chat_app php artisan optimize
-            echo "Deploy Completed!"
+            echo "✅ Deploy muvaffaqiyatli yakunlandi!"

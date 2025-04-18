@@ -42,3 +42,4 @@ jobs:
             docker exec chat_app php artisan optimize
 
             echo "✅ Deploy muvaffaqiyatli yakunlandi!"
+

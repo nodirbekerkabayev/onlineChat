@@ -54,10 +54,20 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
               cd /var/www/online_chat_app
-              sudo docker compose down
-              sudo git reset --hard
-              sudo git pull
-              sudo docker compose up -d --build
+              # Check if docker-compose (v1) or docker compose (v2) is available
+              if command -v docker-compose &> /dev/null; then
+                # Docker Compose v1
+                sudo docker-compose down
+                sudo git reset --hard
+                sudo git pull
+                sudo docker-compose up -d --build
+              else
+                # Docker Compose v2
+                sudo docker compose down
+                sudo git reset --hard
+                sudo git pull
+                sudo docker compose up -d --build
+              fi
               sleep 2
               CONTAINER_NAME=$(sudo docker ps --filter "name=chat_app" --format '{{.Names}}')
               sudo docker exec $CONTAINER_NAME php artisan migrate

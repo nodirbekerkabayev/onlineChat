@@ -1,4 +1,5 @@
 name: Laravel
+
 on:
   push:
     branches: [ "main" ]
@@ -6,11 +7,44 @@ on:
     branches: [ "main" ]
 
 jobs:
+  test:
+    name: Test Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, json, libxml
+          coverage: none
+
+      - name: Cache Composer packages
+        id: composer-cache
+        uses: actions/cache@v3
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-
+
+      - name: Install Dependencies
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Generate key
+        run: php artisan key:generate
+
+      - name: Run tests
+        run: php artisan test
 
   deploy:
-
-    name: Deploy to AWS (EC2)
+    name: Deploy to DigitalOcean
+    needs: test
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
       - name: executing remote ssh commands using private key
         uses: appleboy/ssh-action@v1.1.0
@@ -19,12 +53,15 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
           script: |
-            cd /var/www/chat_app
-            sudo docker compose down
-            sudo git reset --hard
-            sudo git pull
-            sudo docker compose up -d --build
-            sleep 2
-            sudo docker exec chat_app php artisan migrate
-            sudo docker exec chat_app php artisan optimize
-            echo "Deploy Completed!"
+              cd /var/www/online_chat_app
+              sudo docker compose down
+              sudo git reset --hard
+              sudo git pull
+              sudo docker compose up -d --build
+              sleep 2
+              CONTAINER_NAME=$(sudo docker ps --filter "name=chat_app" --format '{{.Names}}')
+              sudo docker exec $CONTAINER_NAME php artisan migrate
+              sudo docker exec $CONTAINER_NAME php artisan optimize
+              sudo docker exec $CONTAINER_NAME php artisan config:cache
+              sudo docker exec $CONTAINER_NAME php artisan route:cache
+              echo "Deploy Completed!"

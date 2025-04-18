@@ -2,7 +2,8 @@ name: Laravel Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   deploy:
@@ -11,11 +12,12 @@ jobs:
 
     steps:
       - name: SSH orqali ulanib Laravel loyihasini deploy qilish
-        uses: 'appleboy/ssh-action@v1.1.0'
+        uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
+          port: 22
           script: |
             cd /var/www/onlineChat
             sudo docker compose down

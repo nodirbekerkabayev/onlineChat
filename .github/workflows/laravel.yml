@@ -7,44 +7,11 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test:
-    name: Test Application
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, gd, json, libxml
-          coverage: none
-
-      - name: Cache Composer packages
-        id: composer-cache
-        uses: actions/cache@v3
-        with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-
-
-      - name: Install Dependencies
-        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-
-      - name: Generate key
-        run: php artisan key:generate
-
-      - name: Run tests
-        run: php artisan test
 
   deploy:
-    name: Deploy to DigitalOcean
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
+    name: Deploy to AWS (EC2)
+    runs-on: ubuntu-latest
     steps:
       - name: executing remote ssh commands using private key
         uses: appleboy/ssh-action@v1.1.0
@@ -52,95 +19,13 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
-          script_stop: true
           script: |
-              cd /var/www/online_chat_app
-              
-              # Ensure .env file exists and has correct values for containerized environment
-              if [ ! -f .env ]; then
-                echo "Creating .env file from .env.example"
-                sudo cp .env.example .env
-                # Set correct values for containerized environment
-                sudo sed -i 's/REDIS_HOST=127.0.0.1/REDIS_HOST=websocket_redis/g' .env
-                sudo sed -i 's/REDIS_PORT=6379/REDIS_PORT=4321/g' .env
-                
-                # Generate application key if needed
-                if ! grep -q "^APP_KEY=" .env || grep -q "^APP_KEY=$" .env; then
-                  echo "Generating application key"
-                  sudo docker-compose exec -T chat_app php artisan key:generate --force || echo "Will generate key after containers are up"
-                fi
-              fi
-              
-              # Check which Docker Compose command to use
-              echo "Determining Docker Compose command..."
-              if command -v docker-compose &> /dev/null; then
-                DOCKER_COMPOSE="docker-compose"
-                echo "Using Docker Compose v1 (docker-compose command)"
-              else
-                DOCKER_COMPOSE="docker compose"
-                echo "Using Docker Compose v2 (docker compose command)"
-              fi
-              
-              # Check for port conflicts before stopping containers
-              echo "Checking for port conflicts..."
-              PORTS_TO_CHECK="8083 5432 8081 9001 5173 1234"
-              for PORT in $PORTS_TO_CHECK; do
-                if sudo lsof -i :$PORT | grep LISTEN; then
-                  echo "WARNING: Port $PORT is already in use. This might cause issues when starting containers."
-                  # Try to kill the process using the port
-                  echo "Attempting to free up port $PORT..."
-                  sudo fuser -k $PORT/tcp || echo "Could not free port $PORT"
-                fi
-              done
-              
-              # Stop running containers
-              echo "Stopping existing containers..."
-              sudo $DOCKER_COMPOSE down || echo "Warning: Failed to stop containers, continuing anyway"
-              
-              # Pull latest code
-              echo "Updating code from repository..."
-              sudo git reset --hard
-              sudo git pull
-              
-              # Start containers with build
-              echo "Starting containers..."
-              sudo $DOCKER_COMPOSE up -d --build
-              
-              # Check if containers started successfully
-              echo "Checking container status..."
-              sudo docker ps
-              
-              # Wait for containers to be ready
-              echo "Waiting for containers to initialize..."
-              sleep 10
-              
-              # Get container name and run commands
-              echo "Running database migrations and optimizations..."
-              CONTAINER_NAME=$(sudo docker ps --filter "name=chat_app" --format '{{.Names}}')
-              
-              if [ -z "$CONTAINER_NAME" ]; then
-                echo "ERROR: Container with name 'chat_app' not found!"
-                echo "Available containers:"
-                sudo docker ps
-                exit 1
-              fi
-              
-              # Generate key if we couldn't do it earlier
-              if ! grep -q "^APP_KEY=" .env || grep -q "^APP_KEY=$" .env; then
-                echo "Generating application key inside container"
-                sudo docker exec $CONTAINER_NAME php artisan key:generate --force
-              fi
-              
-              echo "Using container: $CONTAINER_NAME"
-              # Run composer install inside the container to ensure all dependencies are installed
-              echo "Installing dependencies..."
-              sudo docker exec $CONTAINER_NAME composer install --no-interaction --optimize-autoloader || echo "Warning: Composer install failed"
-              
-              # Run database migrations and optimization commands
-              echo "Running migrations and optimizations..."
-              sudo docker exec $CONTAINER_NAME php artisan migrate --force || echo "Warning: Migration failed"
-              sudo docker exec $CONTAINER_NAME php artisan optimize || echo "Warning: Optimization failed"
-              sudo docker exec $CONTAINER_NAME php artisan config:cache || echo "Warning: Config cache failed"
-              sudo docker exec $CONTAINER_NAME php artisan route:cache || echo "Warning: Route cache failed"
-              
-              echo "Deploy Completed!"
+            cd /var/www/online-chat-app
+            sudo docker compose down
+            sudo git reset --hard
+            sudo git pull
+            sudo docker compose up -d --build
+            sleep 2
+            sudo docker exec chat_app php artisan migrate
+            sudo docker exec chat_app php artisan optimize
+            echo "Deploy Completed!"

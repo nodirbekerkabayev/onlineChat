@@ -12,19 +12,33 @@ jobs:
 
     steps:
       - name: SSH orqali ulanib Laravel loyihasini deploy qilish
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
           port: 22
           script: |
+            echo "➡️ Loyihaga kirildi..."
             cd /var/www/onlineChat
-            sudo docker compose down
-            sudo git reset --hard
-            sudo git pull origin main
-            sudo docker compose up -d --build
+
+            echo "🛑 Docker container'larini to‘xtatamiz..."
+            docker compose down
+
+            echo "🔄 So‘nggi versiyani olib kelyapmiz..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "🛠️ Yig‘ish va ishga tushirish..."
+            docker compose up -d --build
+
+            echo "⏳ Tizimni ishga tushishini kutyapmiz..."
             sleep 5
-            sudo docker exec chat_app php artisan migrate --force
-            sudo docker exec chat_app php artisan optimize
+
+            echo "📦 Migration bajarilmoqda..."
+            docker exec chat_app php artisan migrate --force
+
+            echo "⚙️ Laravel optimize qilinyapti..."
+            docker exec chat_app php artisan optimize
+
             echo "✅ Deploy muvaffaqiyatli yakunlandi!"
